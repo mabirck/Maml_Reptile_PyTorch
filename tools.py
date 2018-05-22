@@ -111,6 +111,7 @@ def maml_sine(model, epochs, lr_inner=0.01, batch_size=1, first_order=False, SIN
         for i, t in enumerate(random.sample(SINE_TRAIN, len(SINE_TRAIN))):
             new_model = SineModel()
             new_model.copy(model, same_var=True)
+            # print(dir(new_model))
             loss = sine_fit1(new_model, t, create_graph=not first_order)
             for name, param in new_model.named_params():
                 grad = param.grad
@@ -121,5 +122,30 @@ def maml_sine(model, epochs, lr_inner=0.01, batch_size=1, first_order=False, SIN
             sine_fit1(new_model, t, force_new=True)
 
             if (i + 1) % batch_size == 0:
+                optimizer.step()
+                optimizer.zero_grad()
+
+
+def reptile_sine(model, epochs, lr_inner=0.01, lr_outer=0.001, k=32, batch_size=32, SINE_TRAIN=None):
+    optimizer = torch.optim.Adam(model.params(), lr=lr_outer)
+    name_to_param = dict(model.named_params())
+    for _ in tqdm(range(epochs)):
+        for i, t in enumerate(random.sample(SINE_TRAIN, len(SINE_TRAIN))):
+            new_model = SineModel()
+            new_model.copy(model)
+            inner_optim = torch.optim.SGD(new_model.params(), lr=lr_inner)
+            for _ in range(k):
+                sine_fit1(new_model, t, inner_optim)
+
+            for name, param in new_model.named_params():
+                cur_grad = (name_to_param[name].data - param.data) / k / lr_inner
+                if name_to_param[name].grad is None:
+                    name_to_param[name].grad = V(torch.zeros(cur_grad.size()))
+                name_to_param[name].grad.data.add_(cur_grad / batch_size)
+#                 if (i + 1) % 500 == 0:
+#                     print(name_to_param[name].grad)
+
+            if (i + 1) % batch_size == 0:
+                to_show = name_to_param['hidden1.bias']
                 optimizer.step()
                 optimizer.zero_grad()

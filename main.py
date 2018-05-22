@@ -3,7 +3,7 @@ import random
 import torch
 from net import SineModel
 from DataLoader import SineWaveTask
-from tools import sine_fit1, plot_sine_test, plot_sine_learning, maml_sine
+from tools import sine_fit1, plot_sine_test, plot_sine_learning, maml_sine, reptile_sine
 import matplotlib.pyplot as plt
 
 TRAIN_SIZE = 10000
@@ -24,6 +24,8 @@ def fit_transfer(epochs=1):
 
 
 def main():
+
+    # Mean And Random Version #
     ONE_SIDED_EXAMPLE = None
     while ONE_SIDED_EXAMPLE is None:
         cur = SineWaveTask()
@@ -42,6 +44,7 @@ def main():
         marker='',
         linestyle='-', SINE_TEST=SINE_TEST)
 
+    # MaML #
     SINE_MAML = [SineModel() for _ in range(5)]
 
     for m in SINE_MAML:
@@ -59,6 +62,46 @@ def main():
 
     plot_sine_test(SINE_MAML[0], ONE_SIDED_EXAMPLE, fits=[0, 1, 10], lr=0.01)
     plt.show()
+
+
+    # First Order #
+    SINE_MAML_FIRST_ORDER = [SineModel() for _ in range(5)]
+
+    for m in SINE_MAML_FIRST_ORDER:
+        maml_sine(m, 4, first_order=True, SINE_TRAIN=SINE_TRAIN)
+
+    plot_sine_test(SINE_MAML_FIRST_ORDER[0], SINE_TEST[0], fits=[0, 1, 10], lr=0.01)
+    plt.show()
+
+    plot_sine_learning(
+        [('MAML', SINE_MAML), ('MAML First Order', SINE_MAML_FIRST_ORDER)],
+        list(range(10)),
+        SINE_TEST=SINE_TEST
+    )
+    plt.show()
+
+    plot_sine_test(SINE_MAML_FIRST_ORDER[0], ONE_SIDED_EXAMPLE, fits=[0, 1, 10], lr=0.01)
+    plt.show()
+
+    # Reptile #
+    SINE_REPTILE = [SineModel() for _ in range(5)]
+
+    for m in SINE_REPTILE:
+        reptile_sine(m, 4, k=3, batch_size=1, SINE_TRAIN=SINE_TRAIN)
+
+    plot_sine_test(SINE_REPTILE[0], SINE_TEST[0], fits=[0, 1, 10], lr=0.01)
+    plt.show()
+
+    plot_sine_learning(
+        [('MAML', SINE_MAML), ('MAML First Order', SINE_MAML_FIRST_ORDER), ('Reptile', SINE_REPTILE)],
+        list(range(32)),
+        SINE_TEST=SINE_TEST
+    )
+    plt.show()
+
+    plot_sine_test(SINE_REPTILE[0], ONE_SIDED_EXAMPLE, fits=[0, 1, 10], lr=0.01)
+    plt.show()
+
 
 if __name__ == "__main__":
     main()
