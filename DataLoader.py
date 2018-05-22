@@ -1,39 +1,33 @@
 import numpy as np
+import matplotlib.pyplot as plt
+import torch
 
 
-class DataGenerator(object):
+class SineWaveTask:
+    def __init__(self):
+        self.a = np.random.uniform(0.1, 5.0)
+        self.b = np.random.uniform(0, 2*np.pi)
+        self.train_x = None
 
-    def __init__(self, args):
-        super(DataGenerator, self).__init__()
+    def f(self, x):
+        return self.a * np.sin(x + self.b)
 
-        ''' Keep Reference of args '''
+    def training_set(self, size=10, force_new=False):
+        if self.train_x is None and not force_new:
+            self.train_x = np.random.uniform(-5, 5, size)
+            x = self.train_x
+        elif not force_new:
+            x = self.train_x
+        else:
+            x = np.random.uniform(-5, 5, size)
+        y = self.f(x)
+        return torch.Tensor(x), torch.Tensor(y)
 
-        self.args = args
-        self.batch_size = args.batch_size
-        self.num_samples_per_class = args.num_samples_per_class
-        self.num_classes = 1
+    def test_set(self, size=50):
+        x = np.linspace(-5, 5, size)
+        y = self.f(x)
+        return torch.Tensor(x), torch.Tensor(y)
 
-        if args.datasource == "sinusoid":
-            self.generate = self.generate_sinusoid_batch
-            self.amp_range = [0.1, 5.0]
-            self.phase_range = [0, np.pi]
-            self.input_range = [-5.0, 5.0]
-            self.dim_input = 1
-            self.dim_output = 1
-
-    def generate_sinusoid_batch(self, input_idx=None):
-        # input_idx is used during qualitative testing --the number of examples
-        # used for the grad update
-        amp = np.random.uniform(self.amp_range[0], self.amp_range[1], [self.batch_size])
-        phase = np.random.uniform(self.phase_range[0], self.phase_range[1], [self.batch_size])
-        outputs = np.zeros([self.batch_size, self.num_samples_per_class, self.dim_output])
-        init_inputs = np.zeros([self.batch_size, self.num_samples_per_class, self.dim_input])
-        for func in range(self.batch_size):
-            init_inputs[func] = np.random.uniform(self.input_range[0], self.input_range[1], [self.num_samples_per_class, 1])
-            if input_idx is not None:
-                init_inputs[:,input_idx:,0] = np.linspace(self.input_range[0], self.input_range[1], num=self.num_samples_per_class-input_idx, retstep=False)
-            outputs[func] = amp[func] * np.sin(init_inputs[func]-phase[func])
-
-        print(init_inputs, outputs, amp, phase)
-
-        return init_inputs, outputs, amp, phase
+    def plot(self, *args, **kwargs):
+        x, y = self.test_set(size=100)
+        return plt.plot(x.numpy(), y.numpy(), *args, **kwargs)

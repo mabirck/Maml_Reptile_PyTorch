@@ -1,130 +1,64 @@
-from args import get_args
-from DataLoader import DataGenerator
-from maml import MAML
+import numpy as np
+import random
+import torch
+from net import SineModel
+from DataLoader import SineWaveTask
+from tools import sine_fit1, plot_sine_test, plot_sine_learning, maml_sine
+import matplotlib.pyplot as plt
+
+TRAIN_SIZE = 10000
+TEST_SIZE = 1000
+
+SINE_TRAIN = [SineWaveTask() for _ in range(TRAIN_SIZE)]
+SINE_TEST = [SineWaveTask() for _ in range(TEST_SIZE)]
+
+SINE_TRANSFER = SineModel()
 
 
-def train(model, exp_string, data_gen, resume_itr=0, args=None):
-    SUMMARY_INTERVAL = 100
-    SAVE_INTERVAL = 1000
-    if args.datasource == 'sinusoid':
-        PRINT_INTERVAL = 1000
-        TEST_PRINT_INTERVAL = PRINT_INTERVAL*5
-    else:
-        PRINT_INTERVAL = 100
-        TEST_PRINT_INTERVAL = PRINT_INTERVAL*5
+def fit_transfer(epochs=1):
+    optim = torch.optim.Adam(SINE_TRANSFER.params())
 
-    prelosses, postlosses = [], []
-    num_classes = DataGenerator.num_classes  # for classification, 1 otherwise
-    multitask_weights, reg_weights = [], []
-
-    for i in range(resume_itr, args.pre_iter + args.meta_iter):
-        batch_x, batch_y, amp, phase = DataGenerator.generate()
-
-        ''' Oracle adds extra info into the model '''
-        if(args.oracle):
-            batch_x[i, :, 1] = amp[i]
-            batch_y[i, :, 2] = phase[i]
-
-        ''' Get train batch '''
-        input_train = batch_x[:, :num_classes * args.update_batch_size, :]
-        label_train = batch_y[:, :num_classes * args.update_batch_size, :]
-
-        ''' Get test batch '''
-        input_test = batch_x[:, num_classes * args.update_batch_size:, :]
-        label_test = batch_y[:, num_classes * args.update_batch_size:, :]
-        
-        if i < args.pre_iter:
-            pass
-            ''' NOT SURE WHAT TODO '''
-
-        if (i % SUMMARY_INTERVAL == 0 or i % PRINT_INTERVAL == 0):
-            pass
-            ''' NOT SURE WHAT TODO '''
-
-        result = model(input)
-
-
-def test(model, exp_string, data_gen, test_num_updates=None, args=None):
-    assert "Not Implemented Yet"
+    for _ in range(epochs):
+        for t in random.sample(SINE_TRAIN, len(SINE_TRAIN)):
+            sine_fit1(SINE_TRANSFER, t, optim)
 
 
 def main():
-    ''' Arguments which dictate how training is gonna be! '''
-    args = get_args()
+    ONE_SIDED_EXAMPLE = None
+    while ONE_SIDED_EXAMPLE is None:
+        cur = SineWaveTask()
+        x, _ = cur.training_set()
+        x = x.numpy()
+        if np.max(x) < 0 or np.min(x) > 0:
+            ONE_SIDED_EXAMPLE = cur
 
-    print(args)
+    fit_transfer()
 
-    if args.dataset == 'sinusoid':
-        if args.train:
-            test_num_updates = 5
-        else:
-            test_num_updates = 10
+    plot_sine_test(SINE_TRANSFER, SINE_TEST[0], fits=[0, 1, 10], lr=0.02)
 
-    if args.test:
-        orig_meta_batch_size = args.meta_batch_size
-        # always use meta batch size of 1 when testing.
-        args.meta_batch_size = 1
+    plot_sine_learning(
+        [('Transfer', SINE_TRANSFER), ('Random', SineModel())],
+        list(range(100)),
+        marker='',
+        linestyle='-', SINE_TEST=SINE_TEST)
 
-    if args.datasource == 'sinusoid':
-        data_generator = DataGenerator(args.update_batch_size*2, args.meta_batch_size)
+    SINE_MAML = [SineModel() for _ in range(5)]
 
-    dim_output = data_generator.dim_output
+    for m in SINE_MAML:
+        maml_sine(m, 4, SINE_TRAIN=SINE_TRAIN)
 
-    if args.oracle == 'oracle':
-        assert args.datasource == 'sinusoid'
-        dim_input = 3
-        args.pretrain_iterations += args.metatrain_iterations
-        args.metatrain_iterations = 0
-    else:
-        dim_input = data_generator.dim_input
+    plot_sine_test(SINE_MAML[0], SINE_TEST[0], fits=[0, 1, 10], lr=0.01)
+    plt.show()
 
-    input_tensors = None
+    plot_sine_learning(
+        [('Transfer', SINE_TRANSFER), ('MAML', SINE_MAML[0]), ('Random', SineModel())],
+        list(range(10)),
+        SINE_TEST=SINE_TEST
+    )
+    plt.show()
 
-    model = MAML(dim_input, dim_output, test_num_updates=test_num_updates)
+    plot_sine_test(SINE_MAML[0], ONE_SIDED_EXAMPLE, fits=[0, 1, 10], lr=0.01)
+    plt.show()
 
-    if not args.test:
-        model.construct_model(input_tensors=input_tensors, prefix='metatrain_')
-
-    # TODO check this out, summop, saver
-    # model.summ_op = tf.summary.merge_all()
-    # saver = loader = tf.train.Saver(tf.get_collection(tf.GraphKeys.TRAINABLE\
-    # _VARIABLES), max_to_keep=10)
-    # sess = tf.InteractiveSession()
-
-    if args.test:
-        # change to original meta batch size when loading model.
-        args.meta_batch_size = orig_meta_batch_size
-
-    if args.train_update_batch_size == -1:
-        args.train_update_batch_size = args.update_batch_size
-    if args.train_update_lr == -1:
-        args.train_update_lr = args.update_lr
-
-    resume_itr = 0
-    model_file = None
-
-    exp_string = ""
-
-    # tf.global_variables_initializer().run()
-    # tf.train.start_queue_runners()
-
-    if args.resume or args.test:
-        # model_file = tf.train.latest_checkpoint(args.logdir + '/' + exp_string)
-        assert "should load model with pytorch"
-        if args.test_iter > 0:
-            model_file = model_file[:model_file.index('model')] + 'model' \
-                         + str(args.test_iter)
-        if model_file:
-            ind1 = model_file.index('model')
-            resume_itr = int(model_file[ind1+5:])
-            print("Restoring model weights from " + model_file)
-            # saver.restore(sess, model_file)
-
-    if args.test:
-        test(model, exp_string, data_generator, test_num_updates, args)
-    else:
-        train(model, exp_string, data_generator, resume_itr, args)
-
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
